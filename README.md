@@ -43,12 +43,12 @@ The backend will be available at http://localhost:8000
 1. Install dependencies:
 ```bash
 cd frontend
-npm install
+yarn install
 ```
 
 2. Start the development server:
 ```bash
-npm start
+yarn start
 ```
 
 The frontend will be available at http://localhost:3000
