@@ -77,13 +77,15 @@ function App() {
             </div>
           )}
 
-          {response && (
+          {response && response.saved_files && (
             <div className="success-message">
               <h3>Upload Successful!</h3>
               <p>Uploaded files:</p>
               <ul>
-                {response.filenames.map((filename, index) => (
-                  <li key={index}>{filename}</li>
+                {response.saved_files.map((file, index) => (
+                  <li key={index}>
+                    {file.original_name} → {file.saved_name}
+                  </li>
                 ))}
               </ul>
             </div>
