@@ -38,6 +38,10 @@ yarn.lock
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Environment variables
+.env
+*/.env
+
 # Image files
 *.jpg
 *.jpeg

@@ -7,6 +7,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 import re
+from services.image_analyzer import ImageAnalyzer
 
 app = FastAPI()
 
@@ -22,6 +23,9 @@ app.add_middleware(
 # Configure uploads directory
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Initialize image analyzer
+image_analyzer = ImageAnalyzer()
 
 def sanitize_group_title(title: str) -> str:
     """Convert group title to a safe directory name."""
@@ -80,11 +84,17 @@ async def upload_images(
             
         try:
             saved_filename = save_upload_file(file, group_dir)
+            file_path = group_dir / saved_filename
+            
+            # Analyze the image
+            analysis = await image_analyzer.analyze_image(file_path)
+            
             saved_files.append({
                 "original_name": file.filename,
                 "saved_name": saved_filename,
                 "content_type": content_type,
-                "group": safe_title
+                "group": safe_title,
+                "analysis": analysis
             })
         except Exception as e:
             errors.append(f"Failed to save {file.filename or 'Unknown file'}: {str(e)}")
@@ -130,10 +140,14 @@ async def get_group(group_id: str):
 
     files = []
     for file_path in group_dir.glob("*.*"):
+        # Get image analysis if not already analyzed
+        analysis = await image_analyzer.analyze_image(file_path)
+        
         files.append({
             "filename": file_path.name,
             "size": file_path.stat().st_size,
-            "uploaded_at": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat()
+            "uploaded_at": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
+            "analysis": analysis
         })
 
     # Sort files by upload date
