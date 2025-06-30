@@ -10,6 +10,7 @@ function App() {
   const [error, setError] = useState(null);
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
+  const [selectedImage, setSelectedImage] = useState(null);
 
   useEffect(() => {
     fetchGroups();
@@ -28,6 +29,7 @@ function App() {
     try {
       const response = await axios.get(`http://localhost:8000/groups/${groupId}`);
       setSelectedGroup(response.data);
+      setSelectedImage(null); // Reset selected image when changing groups
     } catch (err) {
       console.error('Failed to fetch group details:', err);
     }
@@ -79,6 +81,110 @@ function App() {
 
   const formatDate = (isoDate) => {
     return new Date(isoDate).toLocaleString();
+  };
+
+  const formatFileSize = (bytes) => {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  };
+
+  const renderMetadata = (metadata) => {
+    if (!metadata) return null;
+
+    return (
+      <div className="metadata-section">
+        <h4>Image Details</h4>
+        <div className="metadata-grid">
+          {metadata.date_taken && (
+            <div className="metadata-item">
+              <span className="label">Date Taken:</span>
+              <span>{formatDate(metadata.date_taken)}</span>
+            </div>
+          )}
+          <div className="metadata-item">
+            <span className="label">Dimensions:</span>
+            <span>{metadata.width} × {metadata.height}</span>
+          </div>
+          <div className="metadata-item">
+            <span className="label">Size:</span>
+            <span>{formatFileSize(metadata.file_size)}</span>
+          </div>
+          {metadata.camera_make && (
+            <div className="metadata-item">
+              <span className="label">Camera:</span>
+              <span>{metadata.camera_make} {metadata.camera_model}</span>
+            </div>
+          )}
+          {metadata.gps && (
+            <div className="metadata-item">
+              <span className="label">Location:</span>
+              <span>
+                <a 
+                  href={`https://www.google.com/maps?q=${metadata.gps.latitude},${metadata.gps.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  View on Map
+                </a>
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const renderAnalysis = (analysis) => {
+    if (!analysis || !analysis.content_analysis) return null;
+
+    let content;
+    try {
+      content = typeof analysis.content_analysis === 'string' 
+        ? JSON.parse(analysis.content_analysis)
+        : analysis.content_analysis;
+    } catch (e) {
+      console.error('Failed to parse analysis:', e);
+      return null;
+    }
+
+    return (
+      <div className="analysis-section">
+        <h4>AI Analysis</h4>
+        <div className="analysis-content">
+          {content.description && (
+            <div className="analysis-item">
+              <span className="label">Description:</span>
+              <p>{content.description}</p>
+            </div>
+          )}
+          {content.location_type && (
+            <div className="analysis-item">
+              <span className="label">Location Type:</span>
+              <p>{content.location_type}</p>
+            </div>
+          )}
+          {content.time_and_weather && (
+            <div className="analysis-item">
+              <span className="label">Time & Weather:</span>
+              <p>{content.time_and_weather}</p>
+            </div>
+          )}
+          {content.activities && (
+            <div className="analysis-item">
+              <span className="label">Activities:</span>
+              <p>{content.activities}</p>
+            </div>
+          )}
+          {content.key_objects && (
+            <div className="analysis-item">
+              <span className="label">Key Elements:</span>
+              <p>{content.key_objects}</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -177,14 +283,26 @@ function App() {
                 <p>Created: {formatDate(selectedGroup.created_at)}</p>
                 <div className="files-list">
                   {selectedGroup.files.map((file, index) => (
-                    <div key={index} className="file-item">
+                    <div 
+                      key={index} 
+                      className={`file-item ${selectedImage === file ? 'selected' : ''}`}
+                      onClick={() => setSelectedImage(file)}
+                    >
                       <p>{file.filename}</p>
                       <p className="file-info">
-                        Size: {Math.round(file.size / 1024)} KB
+                        Size: {formatFileSize(file.size)}
                       </p>
                     </div>
                   ))}
                 </div>
+
+                {selectedImage && (
+                  <div className="image-analysis">
+                    <h3>Image Analysis</h3>
+                    {renderMetadata(selectedImage.analysis.metadata)}
+                    {renderAnalysis(selectedImage.analysis)}
+                  </div>
+                )}
               </div>
             )}
           </div>

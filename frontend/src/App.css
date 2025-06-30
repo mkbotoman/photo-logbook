@@ -222,12 +222,24 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  margin-bottom: 2rem;
 }
 
 .file-item {
   background-color: #454c5c;
   padding: 0.8rem;
   border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.file-item:hover {
+  background-color: #515a6e;
+}
+
+.file-item.selected {
+  background-color: #515a6e;
+  border: 1px solid #61dafb;
 }
 
 .file-item p {
@@ -238,4 +250,68 @@ button:disabled {
   font-size: 0.8rem;
   color: #aaa;
   margin-top: 0.3rem;
+}
+
+.image-analysis {
+  background-color: #454c5c;
+  padding: 1.5rem;
+  border-radius: 4px;
+  margin-top: 1.5rem;
+}
+
+.image-analysis h3 {
+  margin: 0 0 1.5rem 0;
+  color: #61dafb;
+}
+
+.metadata-section,
+.analysis-section {
+  background-color: #363b47;
+  padding: 1.2rem;
+  border-radius: 4px;
+  margin-bottom: 1.5rem;
+}
+
+.metadata-section h4,
+.analysis-section h4 {
+  margin: 0 0 1rem 0;
+  color: #61dafb;
+  font-size: 1.1rem;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.metadata-item,
+.analysis-item {
+  margin-bottom: 0.8rem;
+}
+
+.metadata-item .label,
+.analysis-item .label {
+  display: block;
+  color: #aaa;
+  font-size: 0.9rem;
+  margin-bottom: 0.3rem;
+}
+
+.metadata-item a {
+  color: #61dafb;
+  text-decoration: none;
+}
+
+.metadata-item a:hover {
+  text-decoration: underline;
+}
+
+.analysis-content {
+  color: #fff;
+}
+
+.analysis-item p {
+  margin: 0;
+  line-height: 1.4;
 }
