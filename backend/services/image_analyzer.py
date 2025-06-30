@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, Tuple
 import base64
 import openai
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
@@ -83,26 +84,39 @@ class ImageAnalyzer:
                 })
 
                 # Extract EXIF data
-                exif_data = img._getexif() if hasattr(img, '_getexif') else None
-                if exif_data:
-                    for tag_id, value in exif_data.items():
-                        tag = TAGS.get(tag_id, tag_id)
-                        if tag == 'DateTimeOriginal':
+                try:
+                    exif_data = {}
+                    raw_exif = img.getexif() if hasattr(img, 'getexif') else None
+                    if raw_exif:
+                        for tag_id, value in raw_exif.items():
+                            tag = TAGS.get(tag_id, tag_id)
+                            if isinstance(value, bytes):
+                                try:
+                                    value = value.decode()
+                                except:
+                                    value = str(value)
+                            exif_data[tag] = value
+
+                        # Extract specific EXIF data we want
+                        if 'DateTimeOriginal' in exif_data:
                             try:
                                 metadata['date_taken'] = datetime.strptime(
-                                    value, '%Y:%m:%d %H:%M:%S'
+                                    exif_data['DateTimeOriginal'], '%Y:%m:%d %H:%M:%S'
                                 ).isoformat()
                             except Exception:
                                 pass
-                        elif tag == 'Make':
-                            metadata['camera_make'] = value
-                        elif tag == 'Model':
-                            metadata['camera_model'] = value
+                        if 'Make' in exif_data:
+                            metadata['camera_make'] = exif_data['Make']
+                        if 'Model' in exif_data:
+                            metadata['camera_model'] = exif_data['Model']
 
-                    # Extract GPS data
-                    gps_data = self._get_gps_data(exif_data)
-                    if gps_data:
-                        metadata['gps'] = gps_data
+                        # Extract GPS data
+                        gps_data = self._get_gps_data(exif_data)
+                        if gps_data:
+                            metadata['gps'] = gps_data
+
+                except Exception as e:
+                    metadata['exif_error'] = str(e)
 
             # Use exif library for additional metadata
             with open(image_path, 'rb') as img_file:
@@ -134,8 +148,9 @@ class ImageAnalyzer:
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
 
-            response = await openai.chat.completions.create(
-                model="gpt-4-vision-preview",
+            client = openai.AsyncOpenAI(api_key=self.openai_api_key)
+            response = await client.chat.completions.create(
+                model="gpt-4o",
                 messages=[
                     {
                         "role": "user",
@@ -147,7 +162,8 @@ class ImageAnalyzer:
                             {
                                 "type": "image_url",
                                 "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
+                                    "url": f"data:image/jpeg;base64,{base64_image}",
+                                    "detail": "high"
                                 }
                             }
                         ]
@@ -156,7 +172,25 @@ class ImageAnalyzer:
                 max_tokens=500
             )
 
-            return response.choices[0].message.content
+            # Parse the response content
+            try:
+                content = response.choices[0].message.content
+                if content is None:
+                    return {
+                        "error": "No content in response",
+                        "description": "Failed to analyze image content"
+                    }
+                    
+                # Try to parse as JSON, if it fails, return as raw text
+                try:
+                    return json.loads(content)
+                except json.JSONDecodeError:
+                    return {"raw_analysis": content}
+            except Exception as e:
+                return {
+                    "error": str(e),
+                    "description": "Failed to analyze image content"
+                }
 
         except Exception as e:
             return {
