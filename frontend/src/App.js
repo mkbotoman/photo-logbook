@@ -138,15 +138,7 @@ function App() {
   const renderAnalysis = (analysis) => {
     if (!analysis || !analysis.content_analysis) return null;
 
-    let content;
-    try {
-      content = typeof analysis.content_analysis === 'string' 
-        ? JSON.parse(analysis.content_analysis)
-        : analysis.content_analysis;
-    } catch (e) {
-      console.error('Failed to parse analysis:', e);
-      return null;
-    }
+    const content = analysis.content_analysis;
 
     return (
       <div className="analysis-section">
@@ -158,28 +150,16 @@ function App() {
               <p>{content.description}</p>
             </div>
           )}
-          {content.location_type && (
-            <div className="analysis-item">
-              <span className="label">Location Type:</span>
-              <p>{content.location_type}</p>
+          {content.error && (
+            <div className="analysis-item error">
+              <span className="label">Error:</span>
+              <p>{content.error}</p>
             </div>
           )}
-          {content.time_and_weather && (
+          {content.raw_analysis && (
             <div className="analysis-item">
-              <span className="label">Time & Weather:</span>
-              <p>{content.time_and_weather}</p>
-            </div>
-          )}
-          {content.activities && (
-            <div className="analysis-item">
-              <span className="label">Activities:</span>
-              <p>{content.activities}</p>
-            </div>
-          )}
-          {content.key_objects && (
-            <div className="analysis-item">
-              <span className="label">Key Elements:</span>
-              <p>{content.key_objects}</p>
+              <span className="label">Analysis:</span>
+              <p>{content.raw_analysis}</p>
             </div>
           )}
         </div>
