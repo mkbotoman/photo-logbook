@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 # Configure uploads directory
-UPLOADS_DIR = Path("backend/uploads")
+UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 def save_upload_file(upload_file: UploadFile) -> str:
