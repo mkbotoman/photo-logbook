@@ -36,4 +36,15 @@ yarn.lock
 
 # Uploaded files
 backend/uploads/*
-!backend/uploads/.gitkeep 
+!backend/uploads/.gitkeep
+backend/backend/uploads/*
+!backend/backend/uploads/.gitkeep
+
+# Image files
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.bmp
+*.tiff
+*.webp 
