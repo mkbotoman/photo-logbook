@@ -91,10 +91,25 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.response-container {
+  margin-top: 2rem;
+  text-align: left;
+}
+
 .error-message {
   color: #ff6b6b;
   margin-top: 1rem;
   font-size: 0.9rem;
+}
+
+.error-message h3 {
+  color: #ff6b6b;
+  margin: 0 0 0.5rem 0;
+}
+
+.error-message ul {
+  margin: 0;
+  padding-left: 1.2rem;
 }
 
 .success-message {
@@ -104,6 +119,7 @@ button:disabled {
 }
 
 .success-message h3 {
+  color: #69db7c;
   margin: 0 0 0.5rem 0;
 }
 
@@ -111,7 +127,6 @@ button:disabled {
   list-style: none;
   padding: 0;
   margin: 0.5rem 0 0 0;
-  font-size: 0.8rem;
 }
 
 .success-message li {
