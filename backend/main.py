@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List
@@ -8,6 +8,9 @@ from datetime import datetime
 from pathlib import Path
 import re
 from services.image_analyzer import ImageAnalyzer
+from database import get_db, SessionLocal
+import crud
+from sqlalchemy.orm import Session
 
 app = FastAPI()
 
@@ -59,6 +62,7 @@ def save_upload_file(upload_file: UploadFile, group_dir: Path) -> str:
 async def upload_images(
     files: List[UploadFile] = File(...),
     group_title: str = Form(...),
+    db: Session = Depends(get_db)
 ):
     if not group_title:
         raise HTTPException(status_code=400, detail="Group title is required")
@@ -69,8 +73,12 @@ async def upload_images(
 
     # Create group directory with timestamp to ensure uniqueness
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    group_dir = UPLOADS_DIR / f"{safe_title}_{timestamp}"
+    directory_name = f"{safe_title}_{timestamp}"
+    group_dir = UPLOADS_DIR / directory_name
     group_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create group in database
+    db_group = crud.create_image_group(db, group_title, directory_name)
 
     saved_files = []
     errors = []
@@ -89,7 +97,20 @@ async def upload_images(
             # Analyze the image
             analysis = await image_analyzer.analyze_image(file_path)
             
+            # Create image record in database
+            db_image = crud.create_image(
+                db=db,
+                group_id=db_group.id._value,
+                original_filename=file.filename or "unknown",
+                stored_filename=saved_filename,
+                content_type=content_type,
+                file_size=os.path.getsize(file_path),
+                metadata=analysis["metadata"],
+                content_analysis=analysis["content_analysis"]
+            )
+            
             saved_files.append({
+                "id": db_image.id,
                 "original_name": file.filename,
                 "saved_name": saved_filename,
                 "content_type": content_type,
@@ -101,61 +122,62 @@ async def upload_images(
     
     return JSONResponse(content={
         "group_title": group_title,
-        "group_id": f"{safe_title}_{timestamp}",
+        "group_id": db_group.id,
+        "directory_name": directory_name,
         "saved_files": saved_files,
         "errors": errors
     })
 
 @app.get("/groups")
-async def list_groups():
+async def list_groups(db: Session = Depends(get_db)):
     """List all image groups."""
-    groups = []
-    for group_dir in UPLOADS_DIR.iterdir():
-        if group_dir.is_dir() and not group_dir.name.startswith('.'):
-            # Get group info
-            group_name = group_dir.name
-            files = list(group_dir.glob("*.*"))
-            created_at = datetime.fromtimestamp(group_dir.stat().st_mtime)
-            
-            # Extract original title from directory name (remove timestamp)
-            original_title = "_".join(group_name.split("_")[:-1])
-            
-            groups.append({
-                "id": group_name,
-                "title": original_title,
-                "file_count": len(files),
-                "created_at": created_at.isoformat(),
-            })
-    
-    # Sort groups by creation date, newest first
-    groups.sort(key=lambda x: x["created_at"], reverse=True)
-    return {"groups": groups}
+    groups = crud.get_all_image_groups(db)
+    return {
+        "groups": [
+            {
+                "id": group.id,
+                "title": group.title,
+                "file_count": len(group.images),
+                "created_at": group.created_at.isoformat(),
+            }
+            for group in groups
+        ]
+    }
 
 @app.get("/groups/{group_id}")
-async def get_group(group_id: str):
+async def get_group(group_id: int, db: Session = Depends(get_db)):
     """Get details of a specific group."""
-    group_dir = UPLOADS_DIR / group_id
-    if not group_dir.exists() or not group_dir.is_dir():
+    group = crud.get_image_group(db, group_id)
+    if not group:
         raise HTTPException(status_code=404, detail="Group not found")
 
-    files = []
-    for file_path in group_dir.glob("*.*"):
-        # Get image analysis if not already analyzed
-        analysis = await image_analyzer.analyze_image(file_path)
-        
-        files.append({
-            "filename": file_path.name,
-            "size": file_path.stat().st_size,
-            "uploaded_at": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
-            "analysis": analysis
-        })
-
-    # Sort files by upload date
-    files.sort(key=lambda x: x["uploaded_at"], reverse=True)
-    
     return {
-        "id": group_id,
-        "title": "_".join(group_id.split("_")[:-1]),  # Remove timestamp
-        "created_at": datetime.fromtimestamp(group_dir.stat().st_mtime).isoformat(),
-        "files": files
+        "id": group.id,
+        "title": group.title,
+        "created_at": group.created_at.isoformat(),
+        "files": [
+            {
+                "id": image.id,
+                "filename": image.stored_filename,
+                "original_filename": image.original_filename,
+                "size": image.file_size,
+                "uploaded_at": image.uploaded_at.isoformat(),
+                "analysis": {
+                    "metadata": {
+                        "width": image.width,
+                        "height": image.height,
+                        "format": image.format,
+                        "camera_make": image.camera_make,
+                        "camera_model": image.camera_model,
+                        "date_taken": image.date_taken.isoformat() if image.date_taken else None,
+                        "gps": {
+                            "latitude": float(image.gps_latitude) if image.gps_latitude else None,
+                            "longitude": float(image.gps_longitude) if image.gps_longitude else None
+                        } if image.gps_latitude and image.gps_longitude else None
+                    },
+                    "content_analysis": image.content_analysis
+                }
+            }
+            for image in group.images
+        ]
     } 

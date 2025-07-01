@@ -1,168 +1,143 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import './App.css';
 
 function App() {
-  const [files, setFiles] = useState([]);
+  const [selectedFiles, setSelectedFiles] = useState([]);
   const [groupTitle, setGroupTitle] = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [response, setResponse] = useState(null);
-  const [error, setError] = useState(null);
   const [groups, setGroups] = useState([]);
   const [selectedGroup, setSelectedGroup] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
+    // Fetch groups on component mount
     fetchGroups();
   }, []);
 
   const fetchGroups = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/groups');
-      setGroups(response.data.groups);
+      const response = await fetch('http://localhost:8000/groups');
+      const data = await response.json();
+      setGroups(data.groups);
     } catch (err) {
-      console.error('Failed to fetch groups:', err);
+      setError('Failed to fetch groups');
+      console.error('Error fetching groups:', err);
     }
   };
 
   const fetchGroupDetails = async (groupId) => {
     try {
-      const response = await axios.get(`http://localhost:8000/groups/${groupId}`);
-      setSelectedGroup(response.data);
-      setSelectedImage(null); // Reset selected image when changing groups
+      const response = await fetch(`http://localhost:8000/groups/${groupId}`);
+      const data = await response.json();
+      setSelectedGroup(data);
     } catch (err) {
-      console.error('Failed to fetch group details:', err);
+      setError('Failed to fetch group details');
+      console.error('Error fetching group details:', err);
     }
   };
 
-  const handleFileChange = (e) => {
-    setFiles(Array.from(e.target.files));
-    setResponse(null);
+  const handleFileSelect = (event) => {
+    setSelectedFiles(Array.from(event.target.files));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+    setLoading(true);
     setError(null);
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (files.length === 0) {
-      setError('Please select at least one file');
-      return;
-    }
 
     if (!groupTitle.trim()) {
       setError('Please enter a group title');
+      setLoading(false);
       return;
     }
 
-    setUploading(true);
-    setError(null);
+    if (selectedFiles.length === 0) {
+      setError('Please select at least one file');
+      setLoading(false);
+      return;
+    }
 
     const formData = new FormData();
     formData.append('group_title', groupTitle);
-    files.forEach(file => {
+    selectedFiles.forEach(file => {
       formData.append('files', file);
     });
 
     try {
-      const response = await axios.post('http://localhost:8000/upload', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+      const response = await fetch('http://localhost:8000/upload', {
+        method: 'POST',
+        body: formData,
       });
-      setResponse(response.data);
+
+      const result = await response.json();
+      
+      if (result.errors && result.errors.length > 0) {
+        setError(`Upload completed with errors: ${result.errors.join(', ')}`);
+      }
+
+      // Refresh groups list
+      await fetchGroups();
+      
+      // Clear form
+      setSelectedFiles([]);
       setGroupTitle('');
-      setFiles([]);
-      fetchGroups(); // Refresh the groups list
+      
+      // Select the newly created group
+      await fetchGroupDetails(result.group_id);
+
     } catch (err) {
-      setError(err.message || 'An error occurred during upload');
+      setError('Failed to upload files');
+      console.error('Upload error:', err);
     } finally {
-      setUploading(false);
+      setLoading(false);
     }
   };
 
-  const formatDate = (isoDate) => {
-    return new Date(isoDate).toLocaleString();
-  };
-
-  const formatFileSize = (bytes) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  };
-
-  const renderMetadata = (metadata) => {
-    if (!metadata) return null;
-
-    return (
-      <div className="metadata-section">
-        <h4>Image Details</h4>
-        <div className="metadata-grid">
-          {metadata.date_taken && (
-            <div className="metadata-item">
-              <span className="label">Date Taken:</span>
-              <span>{formatDate(metadata.date_taken)}</span>
-            </div>
-          )}
-          <div className="metadata-item">
-            <span className="label">Dimensions:</span>
-            <span>{metadata.width} × {metadata.height}</span>
-          </div>
-          <div className="metadata-item">
-            <span className="label">Size:</span>
-            <span>{formatFileSize(metadata.file_size)}</span>
-          </div>
-          {metadata.camera_make && (
-            <div className="metadata-item">
-              <span className="label">Camera:</span>
-              <span>{metadata.camera_make} {metadata.camera_model}</span>
-            </div>
-          )}
-          {metadata.gps && (
-            <div className="metadata-item">
-              <span className="label">Location:</span>
-              <span>
-                <a 
-                  href={`https://www.google.com/maps?q=${metadata.gps.latitude},${metadata.gps.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  View on Map
-                </a>
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleString();
   };
 
   const renderAnalysis = (analysis) => {
-    if (!analysis || !analysis.content_analysis) return null;
-
-    const content = analysis.content_analysis;
+    if (!analysis) return null;
 
     return (
-      <div className="analysis-section">
-        <h4>AI Analysis</h4>
-        <div className="analysis-content">
-          {content.description && (
-            <div className="analysis-item">
-              <span className="label">Description:</span>
-              <p>{content.description}</p>
-            </div>
-          )}
-          {content.error && (
-            <div className="analysis-item error">
-              <span className="label">Error:</span>
-              <p>{content.error}</p>
-            </div>
-          )}
-          {content.raw_analysis && (
-            <div className="analysis-item">
-              <span className="label">Analysis:</span>
-              <p>{content.raw_analysis}</p>
-            </div>
-          )}
+      <div className="analysis">
+        <h4>Image Analysis</h4>
+        <div className="metadata">
+          <h5>Metadata</h5>
+          <ul>
+            {analysis.metadata.width && <li>Dimensions: {analysis.metadata.width} x {analysis.metadata.height}</li>}
+            {analysis.metadata.format && <li>Format: {analysis.metadata.format}</li>}
+            {analysis.metadata.camera_make && <li>Camera: {analysis.metadata.camera_make} {analysis.metadata.camera_model}</li>}
+            {analysis.metadata.date_taken && <li>Date Taken: {formatDate(analysis.metadata.date_taken)}</li>}
+            {analysis.metadata.gps && (
+              <li>
+                Location: {analysis.metadata.gps.latitude}, {analysis.metadata.gps.longitude}
+                <a 
+                  href={`https://www.google.com/maps?q=${analysis.metadata.gps.latitude},${analysis.metadata.gps.longitude}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="map-link"
+                >
+                  View on Map
+                </a>
+              </li>
+            )}
+          </ul>
         </div>
+        {analysis.content_analysis && (
+          <div className="content-analysis">
+            <h5>Content Analysis</h5>
+            <p>{analysis.content_analysis.description}</p>
+            {analysis.content_analysis.tags && (
+              <div className="tags">
+                {analysis.content_analysis.tags.map((tag, index) => (
+                  <span key={index} className="tag">{tag}</span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -171,123 +146,84 @@ function App() {
     <div className="App">
       <header className="App-header">
         <h1>Photo Logbook</h1>
-        <div className="main-container">
-          <div className="upload-container">
-            <h2>Upload New Photos</h2>
-            <form onSubmit={handleSubmit}>
-              <div className="form-group">
-                <input
-                  type="text"
-                  value={groupTitle}
-                  onChange={(e) => setGroupTitle(e.target.value)}
-                  placeholder="Enter group title"
-                  className="title-input"
-                />
-              </div>
-              <div className="file-input-container">
-                <input
-                  type="file"
-                  multiple
-                  onChange={handleFileChange}
-                  accept="image/*"
-                  id="file-input"
-                />
-                <label htmlFor="file-input">
-                  {files.length > 0 
-                    ? `${files.length} file${files.length === 1 ? '' : 's'} selected`
-                    : 'Choose Images'}
-                </label>
-              </div>
-              <button 
-                type="submit" 
-                disabled={uploading || files.length === 0 || !groupTitle.trim()}
+      </header>
+
+      <main>
+        <section className="upload-section">
+          <h2>Upload New Images</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="groupTitle">Group Title:</label>
+              <input
+                type="text"
+                id="groupTitle"
+                value={groupTitle}
+                onChange={(e) => setGroupTitle(e.target.value)}
+                placeholder="Enter a title for this group of images"
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="files">Select Images:</label>
+              <input
+                type="file"
+                id="files"
+                multiple
+                accept="image/*"
+                onChange={handleFileSelect}
+                required
+              />
+            </div>
+
+            <button type="submit" disabled={loading}>
+              {loading ? 'Uploading...' : 'Upload'}
+            </button>
+          </form>
+
+          {error && <div className="error">{error}</div>}
+        </section>
+
+        <section className="groups-section">
+          <h2>Image Groups</h2>
+          <div className="groups-list">
+            {groups.map(group => (
+              <div 
+                key={group.id}
+                className={`group-item ${selectedGroup?.id === group.id ? 'selected' : ''}`}
+                onClick={() => fetchGroupDetails(group.id)}
               >
-                {uploading ? 'Uploading...' : 'Upload'}
-              </button>
-            </form>
-
-            {error && (
-              <div className="error-message">
-                {error}
+                <h3>{group.title}</h3>
+                <p>{group.file_count} images</p>
+                <p className="date">Created: {formatDate(group.created_at)}</p>
               </div>
-            )}
-
-            {response && (
-              <div className="response-container">
-                {response.errors && response.errors.length > 0 && (
-                  <div className="error-message">
-                    <h3>Errors:</h3>
-                    <ul>
-                      {response.errors.map((error, index) => (
-                        <li key={`error-${index}`}>{error}</li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-                
-                {response.saved_files && response.saved_files.length > 0 && (
-                  <div className="success-message">
-                    <h3>Successfully Uploaded to Group: {response.group_title}</h3>
-                    <ul>
-                      {response.saved_files.map((file, index) => (
-                        <li key={`file-${index}`}>
-                          {file.original_name}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
-              </div>
-            )}
+            ))}
           </div>
+        </section>
 
-          <div className="groups-container">
-            <h2>Photo Groups</h2>
-            <div className="groups-list">
-              {groups.map(group => (
-                <div 
-                  key={group.id} 
-                  className={`group-item ${selectedGroup?.id === group.id ? 'selected' : ''}`}
-                  onClick={() => fetchGroupDetails(group.id)}
-                >
-                  <h3>{group.title}</h3>
-                  <p>{group.file_count} photos</p>
-                  <p className="date">{formatDate(group.created_at)}</p>
+        {selectedGroup && (
+          <section className="group-details">
+            <h2>{selectedGroup.title}</h2>
+            <p className="date">Created: {formatDate(selectedGroup.created_at)}</p>
+            
+            <div className="images-grid">
+              {selectedGroup.files.map(file => (
+                <div key={file.id} className="image-card">
+                  <img 
+                    src={`http://localhost:8000/uploads/${selectedGroup.directory_name}/${file.filename}`}
+                    alt={file.original_filename}
+                  />
+                  <div className="image-info">
+                    <h4>{file.original_filename}</h4>
+                    <p>Uploaded: {formatDate(file.uploaded_at)}</p>
+                    {renderAnalysis(file.analysis)}
+                  </div>
                 </div>
               ))}
             </div>
-
-            {selectedGroup && (
-              <div className="group-details">
-                <h3>{selectedGroup.title}</h3>
-                <p>Created: {formatDate(selectedGroup.created_at)}</p>
-                <div className="files-list">
-                  {selectedGroup.files.map((file, index) => (
-                    <div 
-                      key={index} 
-                      className={`file-item ${selectedImage === file ? 'selected' : ''}`}
-                      onClick={() => setSelectedImage(file)}
-                    >
-                      <p>{file.filename}</p>
-                      <p className="file-info">
-                        Size: {formatFileSize(file.size)}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                {selectedImage && (
-                  <div className="image-analysis">
-                    <h3>Image Analysis</h3>
-                    {renderMetadata(selectedImage.analysis.metadata)}
-                    {renderAnalysis(selectedImage.analysis)}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      </header>
+          </section>
+        )}
+      </main>
     </div>
   );
 }
