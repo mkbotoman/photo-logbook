@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './App.css';
 
 function App() {
@@ -8,6 +8,8 @@ function App() {
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [previewUrls, setPreviewUrls] = useState([]);
+  const [uploadedGroup, setUploadedGroup] = useState(null);
 
   useEffect(() => {
     // Fetch groups on component mount
@@ -36,8 +38,31 @@ function App() {
     }
   };
 
+  const handleDrop = useCallback((e) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files).filter(file => file.type.startsWith('image/'));
+    setSelectedFiles(prevFiles => [...prevFiles, ...files]);
+    
+    // Create preview URLs for the dropped files
+    files.forEach(file => {
+      const url = URL.createObjectURL(file);
+      setPreviewUrls(prev => [...prev, { type: 'local', url }]);
+    });
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+  }, []);
+
   const handleFileSelect = (event) => {
-    setSelectedFiles(Array.from(event.target.files));
+    const files = Array.from(event.target.files);
+    setSelectedFiles(prevFiles => [...prevFiles, ...files]);
+    
+    // Create preview URLs for the selected files
+    files.forEach(file => {
+      const url = URL.createObjectURL(file);
+      setPreviewUrls(prev => [...prev, { type: 'local', url }]);
+    });
   };
 
   const handleSubmit = async (event) => {
@@ -70,26 +95,47 @@ function App() {
       });
 
       const result = await response.json();
+      console.log('Upload response:', result);
       
       if (result.errors && result.errors.length > 0) {
         setError(`Upload completed with errors: ${result.errors.join(', ')}`);
       }
 
-      // Refresh groups list
-      await fetchGroups();
+      // Update preview URLs with server URLs
+      const serverUrls = result.saved_files.map(file => {
+        console.log('Processing file:', file);
+        const imageUrl = file.url.startsWith('http') ? file.url : `http://localhost:8000${file.url}`;
+        return {
+          type: 'server',
+          url: imageUrl,
+          analysis: file.analysis
+        };
+      });
+
+      console.log('Server URLs:', serverUrls);
+      setPreviewUrls(serverUrls);
+      setUploadedGroup(result);
       
       // Clear form
       setSelectedFiles([]);
       setGroupTitle('');
       
-      // Select the newly created group
-      await fetchGroupDetails(result.group_id);
-
     } catch (err) {
       setError('Failed to upload files');
       console.error('Upload error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const removeImage = (index) => {
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    const removedPreview = previewUrls[index];
+    setPreviewUrls(prev => prev.filter((_, i) => i !== index));
+    
+    // Clean up object URL if it's a local preview
+    if (removedPreview.type === 'local') {
+      URL.revokeObjectURL(removedPreview.url);
     }
   };
 
@@ -145,44 +191,175 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Photo Logbook</h1>
+        <h1>Travel Blog Post Generator</h1>
+        <p className="subtitle">Your memories, your words—auto-written.</p>
       </header>
 
       <main>
         <section className="upload-section">
-          <h2>Upload New Images</h2>
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="groupTitle">Group Title:</label>
-              <input
-                type="text"
-                id="groupTitle"
-                value={groupTitle}
-                onChange={(e) => setGroupTitle(e.target.value)}
-                placeholder="Enter a title for this group of images"
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="files">Select Images:</label>
+          <div 
+            className="dropzone"
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+          >
+            <div className="dropzone-content">
+              <img src="/placeholder-image.svg" alt="Upload icon" className="upload-icon" />
+              <p>Drag and drop images here</p>
+              <button className="select-button" onClick={() => document.getElementById('file-input').click()}>
+                Select Images
+              </button>
               <input
                 type="file"
-                id="files"
+                id="file-input"
                 multiple
                 accept="image/*"
                 onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+            </div>
+          </div>
+
+          {previewUrls.length > 0 && (
+            <div className="preview-section">
+              {previewUrls.map((preview, index) => (
+                <div key={index} className="preview-image-container">
+                  <img src={preview.url} alt={`Preview ${index + 1}`} className="preview-image" />
+                  {preview.type === 'local' && (
+                    <button 
+                      className="remove-image" 
+                      onClick={() => removeImage(index)}
+                      aria-label="Remove image"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="upload-form">
+            <div className="form-group">
+              <input
+                type="text"
+                value={groupTitle}
+                onChange={(e) => setGroupTitle(e.target.value)}
+                placeholder="Enter your blog post title"
                 required
               />
             </div>
 
-            <button type="submit" disabled={loading}>
-              {loading ? 'Uploading...' : 'Upload'}
+            <button type="submit" disabled={loading || selectedFiles.length === 0}>
+              {loading ? 'Generating...' : 'Generate Blog Post'}
             </button>
           </form>
 
           {error && <div className="error">{error}</div>}
         </section>
+
+        {uploadedGroup && previewUrls.length > 0 && (
+          <section className="blog-post-section">
+            <h2>Blog Post</h2>
+            <div className="blog-post-preview">
+              {previewUrls.map((preview, index) => (
+                <div key={index} className="blog-post-item">
+                  <img src={preview.url} alt={`Blog post ${index + 1}`} className="blog-image" />
+                  <div className="blog-content">
+                    {preview.type === 'server' && preview.analysis ? (
+                      <div className="metadata-content">
+                        <h3>Image Analysis</h3>
+                        <div className="metadata">
+                          <h4>Technical Details</h4>
+                          <ul>
+                            {preview.analysis.metadata.width && (
+                              <li>Dimensions: {preview.analysis.metadata.width} x {preview.analysis.metadata.height}</li>
+                            )}
+                            {preview.analysis.metadata.format && (
+                              <li>Format: {preview.analysis.metadata.format}</li>
+                            )}
+                            {preview.analysis.metadata.camera_make && (
+                              <li>Camera: {preview.analysis.metadata.camera_make} {preview.analysis.metadata.camera_model}</li>
+                            )}
+                            {preview.analysis.metadata.date_taken && (
+                              <li>Date Taken: {new Date(preview.analysis.metadata.date_taken).toLocaleString()}</li>
+                            )}
+                            {preview.analysis.metadata.gps && (
+                              <li>
+                                Location: {preview.analysis.metadata.gps.latitude}, {preview.analysis.metadata.gps.longitude}
+                                <a 
+                                  href={`https://www.google.com/maps?q=${preview.analysis.metadata.gps.latitude},${preview.analysis.metadata.gps.longitude}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="map-link"
+                                >
+                                  View on Map
+                                </a>
+                              </li>
+                            )}
+                          </ul>
+                        </div>
+                        {preview.analysis.content_analysis && !preview.analysis.content_analysis.error && (
+                          <div className="content-analysis">
+                            <h4>Scene Analysis</h4>
+                            {preview.analysis.content_analysis.description && (
+                              <div className="analysis-section">
+                                <h5>Description</h5>
+                                <p>{preview.analysis.content_analysis.description}</p>
+                              </div>
+                            )}
+                            {preview.analysis.content_analysis.location_type && (
+                              <div className="analysis-section">
+                                <h5>Location</h5>
+                                <p>{preview.analysis.content_analysis.location_type}</p>
+                              </div>
+                            )}
+                            {preview.analysis.content_analysis.time_and_weather && (
+                              <div className="analysis-section">
+                                <h5>Time & Weather</h5>
+                                <p>{preview.analysis.content_analysis.time_and_weather}</p>
+                              </div>
+                            )}
+                            {preview.analysis.content_analysis.key_elements && (
+                              <div className="analysis-section">
+                                <h5>Key Elements</h5>
+                                <ul>
+                                  {preview.analysis.content_analysis.key_elements.map((element, i) => (
+                                    <li key={i}>{element}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {preview.analysis.content_analysis.activities && (
+                              <div className="analysis-section">
+                                <h5>Activities</h5>
+                                <ul>
+                                  {preview.analysis.content_analysis.activities.map((activity, i) => (
+                                    <li key={i}>{activity}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {preview.analysis.content_analysis?.error && (
+                          <div className="error-message">
+                            <p>Failed to analyze image content: {preview.analysis.content_analysis.error}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="metadata-placeholder">
+                        <div className="placeholder-line"></div>
+                        <div className="placeholder-line"></div>
+                        <div className="placeholder-line"></div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="groups-section">
           <h2>Image Groups</h2>

@@ -141,13 +141,18 @@ class ImageAnalyzer:
     async def analyze_image_content(self, image_path: Path) -> Dict[str, Any]:
         """Analyze image content using OpenAI's GPT-4 Vision."""
         if not self.openai_api_key:
-            raise ValueError("OpenAI API key is not set")
+            print("Warning: OpenAI API key not set")  # Debug log
+            return {
+                "error": "OpenAI API key not set",
+                "description": "Image content analysis is not available"
+            }
 
         try:
             # Read and encode image
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
 
+            print(f"Analyzing image: {image_path}")  # Debug log
             client = openai.AsyncOpenAI(api_key=self.openai_api_key)
             response = await client.chat.completions.create(
                 model="gpt-4o",
@@ -157,7 +162,7 @@ class ImageAnalyzer:
                         "content": [
                             {
                                 "type": "text",
-                                "text": "Analyze this image and provide: 1) A detailed description of the scene, 2) Key objects and elements, 3) The apparent location type (e.g., beach, mountain, city), 4) The apparent time of day and weather conditions, 5) Any notable activities or events captured. Format the response as JSON."
+                                "text": "Analyze this image and provide a JSON response with the following structure: { 'description': 'detailed scene description', 'location_type': 'type of location', 'time_and_weather': 'time of day and weather conditions', 'key_elements': ['list', 'of', 'key', 'objects'], 'activities': ['list', 'of', 'activities'] }"
                             },
                             {
                                 "type": "image_url",
@@ -169,13 +174,16 @@ class ImageAnalyzer:
                         ]
                     }
                 ],
-                max_tokens=500
+                max_tokens=1000
             )
+
+            print(f"OpenAI response received for {image_path}")  # Debug log
 
             # Parse the response content
             try:
                 content = response.choices[0].message.content
                 if content is None:
+                    print(f"No content in response for {image_path}")  # Debug log
                     return {
                         "error": "No content in response",
                         "description": "Failed to analyze image content"
@@ -183,16 +191,21 @@ class ImageAnalyzer:
                     
                 # Try to parse as JSON, if it fails, return as raw text
                 try:
-                    return json.loads(content)
-                except json.JSONDecodeError:
+                    parsed_content = json.loads(content)
+                    print(f"Successfully parsed JSON for {image_path}")  # Debug log
+                    return parsed_content
+                except json.JSONDecodeError as e:
+                    print(f"Failed to parse JSON for {image_path}: {str(e)}")  # Debug log
                     return {"raw_analysis": content}
             except Exception as e:
+                print(f"Error processing response for {image_path}: {str(e)}")  # Debug log
                 return {
                     "error": str(e),
                     "description": "Failed to analyze image content"
                 }
 
         except Exception as e:
+            print(f"Error analyzing image {image_path}: {str(e)}")  # Debug log
             return {
                 "error": str(e),
                 "description": "Failed to analyze image content"

@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from typing import List
 import os
 import shutil
@@ -26,6 +27,9 @@ app.add_middleware(
 # Configure uploads directory
 UPLOADS_DIR = Path("uploads")
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+# Mount the uploads directory
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 # Initialize image analyzer
 image_analyzer = ImageAnalyzer()
@@ -100,7 +104,7 @@ async def upload_images(
             # Create image record in database
             db_image = crud.create_image(
                 db=db,
-                group_id=db_group.id._value,
+                group_id=db_group.id.__int__(),
                 original_filename=file.filename or "unknown",
                 stored_filename=saved_filename,
                 content_type=content_type,
@@ -114,6 +118,8 @@ async def upload_images(
                 "original_name": file.filename,
                 "saved_name": saved_filename,
                 "content_type": content_type,
+                "url": f"/uploads/{directory_name}/{saved_filename}",
+                "directory_name": directory_name,
                 "group": safe_title,
                 "analysis": analysis
             })
@@ -154,12 +160,14 @@ async def get_group(group_id: int, db: Session = Depends(get_db)):
     return {
         "id": group.id,
         "title": group.title,
+        "directory_name": group.directory_name,
         "created_at": group.created_at.isoformat(),
         "files": [
             {
                 "id": image.id,
                 "filename": image.stored_filename,
                 "original_filename": image.original_filename,
+                "url": f"/uploads/{group.directory_name}/{image.stored_filename}",
                 "size": image.file_size,
                 "uploaded_at": image.uploaded_at.isoformat(),
                 "analysis": {
