@@ -15,8 +15,11 @@ load_dotenv()
 class ImageAnalyzer:
     def __init__(self):
         self.openai_api_key = os.getenv('OPENAI_API_KEY')
+        print("ImageAnalyzer initialized. API key status:", "is set" if self.openai_api_key else "is not set")
         if self.openai_api_key:
             openai.api_key = self.openai_api_key
+        else:
+            print("Warning: OpenAI API key not found in environment variables")
 
     def _convert_to_degrees(self, value: tuple) -> float:
         """Helper function to convert GPS coordinates to degrees."""
@@ -141,7 +144,7 @@ class ImageAnalyzer:
     async def analyze_image_content(self, image_path: Path) -> Dict[str, Any]:
         """Analyze image content using OpenAI's GPT-4 Vision."""
         if not self.openai_api_key:
-            print("Warning: OpenAI API key not set")  # Debug log
+            print("Warning: OpenAI API key not set")
             return {
                 "error": "OpenAI API key not set",
                 "description": "Image content analysis is not available"
@@ -152,62 +155,84 @@ class ImageAnalyzer:
             with open(image_path, "rb") as image_file:
                 base64_image = base64.b64encode(image_file.read()).decode('utf-8')
 
-            print(f"Analyzing image: {image_path}")  # Debug log
+            print(f"Analyzing image: {image_path}")
             client = openai.AsyncOpenAI(api_key=self.openai_api_key)
-            response = await client.chat.completions.create(
-                model="gpt-4o",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": "Analyze this image and provide a JSON response with the following structure: { 'description': 'detailed scene description', 'location_type': 'type of location', 'time_and_weather': 'time of day and weather conditions', 'key_elements': ['list', 'of', 'key', 'objects'], 'activities': ['list', 'of', 'activities'] }"
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}",
-                                    "detail": "high"
+            try:
+                response = await client.chat.completions.create(
+                    model="gpt-4o",  # Updated model name
+                    messages=[
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": "Analyze this image and provide a JSON response with the following structure: { 'description': 'detailed scene description', 'location_type': 'type of location', 'time_and_weather': 'time of day and weather conditions', 'key_elements': ['list', 'of', 'key', 'objects'], 'activities': ['list', 'of', 'activities'] }"
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{base64_image}",
+                                        "detail": "high"
+                                    }
                                 }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens=1000
-            )
-
-            print(f"OpenAI response received for {image_path}")  # Debug log
+                            ]
+                        }
+                    ],
+                    max_tokens=1000
+                )
+                print(f"OpenAI response received for {image_path}")
+            except Exception as api_error:
+                print(f"OpenAI API error: {str(api_error)}")
+                return {
+                    "error": f"OpenAI API error: {str(api_error)}",
+                    "description": "Failed to analyze image content"
+                }
 
             # Parse the response content
             try:
                 content = response.choices[0].message.content
+                print(f"Raw content from OpenAI: {content}")
+                
                 if content is None:
-                    print(f"No content in response for {image_path}")  # Debug log
+                    print(f"No content in response for {image_path}")
                     return {
                         "error": "No content in response",
                         "description": "Failed to analyze image content"
                     }
-                    
-                # Try to parse as JSON, if it fails, return as raw text
+                
+                # Clean up the content by removing backticks and 'json' if present
+                cleaned_content = content.strip()
+                if cleaned_content.startswith("```json"):
+                    cleaned_content = cleaned_content[7:]
+                elif cleaned_content.startswith("```"):
+                    cleaned_content = cleaned_content[3:]
+                if cleaned_content.endswith("```"):
+                    cleaned_content = cleaned_content[:-3]
+                cleaned_content = cleaned_content.strip()
+                
+                # Try to parse as JSON
                 try:
-                    parsed_content = json.loads(content)
-                    print(f"Successfully parsed JSON for {image_path}")  # Debug log
+                    parsed_content = json.loads(cleaned_content)
+                    print(f"Successfully parsed JSON for {image_path}: {parsed_content}")
                     return parsed_content
                 except json.JSONDecodeError as e:
-                    print(f"Failed to parse JSON for {image_path}: {str(e)}")  # Debug log
-                    return {"raw_analysis": content}
+                    print(f"Failed to parse JSON for {image_path}: {str(e)}")
+                    print(f"Raw content that failed to parse: {content}")
+                    return {
+                        "error": f"Failed to parse response as JSON: {str(e)}",
+                        "raw_analysis": content
+                    }
             except Exception as e:
-                print(f"Error processing response for {image_path}: {str(e)}")  # Debug log
+                print(f"Error processing response for {image_path}: {str(e)}")
                 return {
-                    "error": str(e),
+                    "error": f"Error processing response: {str(e)}",
                     "description": "Failed to analyze image content"
                 }
 
         except Exception as e:
-            print(f"Error analyzing image {image_path}: {str(e)}")  # Debug log
+            print(f"Error analyzing image {image_path}: {str(e)}")
             return {
-                "error": str(e),
+                "error": f"Error analyzing image: {str(e)}",
                 "description": "Failed to analyze image content"
             }
 

@@ -12,6 +12,11 @@ from services.image_analyzer import ImageAnalyzer
 from database import get_db, SessionLocal
 import crud
 from sqlalchemy.orm import Session
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+print("OpenAI API Key status:", "is set" if os.getenv("OPENAI_API_KEY") else "is not set")
 
 app = FastAPI()
 
